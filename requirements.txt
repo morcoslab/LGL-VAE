@@ -1,0 +1,10 @@
+tensorflow~=2.8.0
+numpy>=1.21.6
+plotly~=5.8.2
+matplotlib~=3.5.2
+scipy~=1.8.1
+pandas~=1.4.2
+bokeh~=2.4.3
+keras~=2.8.0
+biopython~=1.79
+git+https://github.com/utdal/py-mfdca.git@vae_dependency
