@@ -1,6 +1,6 @@
 # LGL-VAE
 ## Latent Generative Landscape - Variational Autoencoder
-### Ziegler, C., Martin, J., Sinner, C. and Morcos, F. (TBD) "Latent Generative Landscapes as Maps of Functional Diversity in Protein Sequence Space." TBD
+### Ziegler, C., Martin, J., Sinner, C. and Morcos, F.  "Latent Generative Landscapes as Maps of Functional Diversity in Protein Sequence Space." Nature Communications, 14 (1), 2222, 2023
 ***
 ## **Instructions for Use**
 - **Installation: Docker (Installation time less than 30 min if Docker already installed)**
