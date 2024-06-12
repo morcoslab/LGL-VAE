@@ -29,6 +29,7 @@ from bokeh.models import (
     TextInput,
     Title,
 )
+from bokeh.models.callbacks import CustomJS
 from bokeh.models.widgets import Tabs
 from bokeh.palettes import Colorblind8, Set3, Viridis256, linear_palette
 from bokeh.plotting import figure
@@ -563,7 +564,7 @@ def vae_lgl_analysis_app(doc):
         for dimension in range(newlatent.shape[1]):
             new_data_dictionary["z" + str(dimension)] = newlatent[:, dimension]
         new_data_dictionary["Labels"] = [
-            "Additional sequences" for _ in range(newlatent.shape[0])
+            add_file_name for _ in range(newlatent.shape[0])
         ]
         # plot solid or gradient colors
         if lm.plot_is_gradient:
@@ -573,7 +574,7 @@ def vae_lgl_analysis_app(doc):
             new_data_dictionary["colors"] = [
                 chosen_color for _ in range(newlatent.shape[0])
             ]
-        lm.update_legend_labels('Additional sequences')
+        lm.update_legend_labels(add_file_name)
         lm.update_df(pd.DataFrame(data=new_data_dictionary))
         newsrc = ColumnDataSource(data=lm.df)
         p.renderers = [p.renderers[0]]
@@ -816,9 +817,23 @@ def vae_lgl_analysis_app(doc):
     msa_d.on_click(plot_base_data)
 
     # PlotAdditional
+    def passy(attr, old,new):
+        global add_file_name
+        add_file_name = new
+        return
+
+    myFileNames = TextInput(value="", title="File names:")
+    myFileValues = TextInput(value="", title="File values:")
+
     add_seq_title = Div(text="Additional Sequences")
-    add_d = FileInput()
-    add_d.on_change("value", plot_data)
+    add_d = FileInput(multiple=True)
+    add_d.js_on_change("value", CustomJS(args=dict(myFileNames=myFileNames, myFileValues=myFileValues), code="""
+    myFileNames.value = this.filename.toString();
+    myFileValues.value = this.value.toString();
+"""))
+    myFileNames.on_change("value", passy)
+    myFileValues.on_change("value", plot_data)
+
 
     # ColorAdditional
     color_choice = Button(
