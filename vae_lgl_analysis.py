@@ -6,7 +6,9 @@ import os
 import pickle
 from functools import partial
 from itertools import cycle
+from skimage.draw import polygon
 
+import sys
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -29,6 +31,7 @@ from bokeh.models import (
     TextInput,
     Title,
 )
+from bokeh.events import SelectionGeometry
 from bokeh.models.callbacks import CustomJS
 from bokeh.models.widgets import Tabs
 from bokeh.palettes import Colorblind8, Set3, Viridis256, linear_palette
@@ -80,6 +83,8 @@ def vae_lgl_analysis_app(doc):
             self.plot_is_gradient = True
             self.landscape_seq_df = ""
             self.landscape_grid = None
+            self.grid_seq = ''
+            self.selected_postions = []
             self.bp_color_size = ["steelblue", 6]
             self.recolor_label = None
             self.csv_columns = []
@@ -97,6 +102,7 @@ def vae_lgl_analysis_app(doc):
                 model_seq_len,
                 vae_weights,
                 training_seqs,
+                landscape_seqs
             ) = pickle.load(decompressed_pkl)
             vae = VAE(
                 num_aa_types=23,
@@ -117,6 +123,14 @@ def vae_lgl_analysis_app(doc):
             bytes_decoded = io.BytesIO(decoded).read()  # this line decodes into bytes
             text_obj = bytes_decoded.decode("UTF-8")  # now we convert into an text_obj
             lm.train_fasta = io.StringIO(text_obj)
+
+            decoded = base64.b64decode(
+                landscape_seqs
+            )  # bokeh reads inputs in base64 so we need to decode
+            bytes_decoded = io.BytesIO(decoded).read()  # this line decodes into bytes
+            text_obj = bytes_decoded.decode("UTF-8")  # now we convert into an text_obj
+            text_obj = io.StringIO(text_obj)
+            lm.grid_seq = [record for record in SeqIO.parse(text_obj,"fasta")]
 
         def update_model_folders(self):
             self.model_folders = [
@@ -173,6 +187,7 @@ def vae_lgl_analysis_app(doc):
                 newdf = newdf[newdf["Labels"] != label]
             self.plotting_df = newdf
             newsrc = ColumnDataSource(data=lm.plotting_df)
+            lm.init_basecds(newsrc)
             p.renderers = [p.renderers[0]]
             p.legend.items = []
             p.scatter(
@@ -357,7 +372,11 @@ def vae_lgl_analysis_app(doc):
         stacked_coords = make_grid_msa(local_model)
         # score landscape fasta, create final landscape visual file
         output_landscape = get_hamiltonian(dir_name, stacked_coords)
-        # clean up
+        # save landscape seqs as b64 and clean up
+        with open(
+            os.path.join(dir_name, "temp_landscape.fasta"), "rb"
+        ) as fasta_file:
+            landscape_b64 = base64.b64encode(fasta_file.read())
         os.remove("temp_landscape.fasta")
         # save input seqs as base64 obj
         with open(
@@ -374,6 +393,7 @@ def vae_lgl_analysis_app(doc):
                     lm.seq_len,
                     local_model.get_weights(),
                     training_b64,
+                    landscape_b64,
                 ],
                 f,
             )
@@ -506,8 +526,13 @@ def vae_lgl_analysis_app(doc):
         newlatent, _, _ = lm.the_model.encoder.predict(newds)
         # build CDS
         lm.train_fasta.seek(0)
-        newheaders = [x.description for x in SeqIO.parse(lm.train_fasta, "fasta")]
-        new_data_dictionary = {"Name": newheaders}
+
+        newheaders = []
+        newseqs = []
+        for x in SeqIO.parse(lm.train_fasta, "fasta"):
+            newheaders.append(x.description)
+            newseqs.append(str(x.seq))
+        new_data_dictionary = {"Name": newheaders, "Sequence": newseqs}
         lm.train_fasta.seek(0)
         for dimension in range(newlatent.shape[1]):
             new_data_dictionary["z" + str(dimension)] = newlatent[:, dimension]
@@ -559,8 +584,12 @@ def vae_lgl_analysis_app(doc):
         newds = newds.batch(1)
         newlatent, _, _ = lm.the_model.encoder.predict(newds)
         fasta_in.seek(0)
-        newheaders = [x.description for x in SeqIO.parse(fasta_in, "fasta")]
-        new_data_dictionary = {"Name": newheaders}
+        newheaders = []
+        newseqs = []
+        for x in SeqIO.parse(fasta_in, "fasta"):
+            newheaders.append(x.description)
+            newseqs.append(str(x.seq))
+        new_data_dictionary = {"Name": newheaders, "Sequence": newseqs}
         for dimension in range(newlatent.shape[1]):
             new_data_dictionary["z" + str(dimension)] = newlatent[:, dimension]
         new_data_dictionary["Labels"] = [
@@ -577,6 +606,7 @@ def vae_lgl_analysis_app(doc):
         lm.update_legend_labels(add_file_name)
         lm.update_df(pd.DataFrame(data=new_data_dictionary))
         newsrc = ColumnDataSource(data=lm.df)
+        lm.init_basecds(newsrc)
         p.renderers = [p.renderers[0]]
         p.legend.items = []
         p.scatter(
@@ -595,9 +625,7 @@ def vae_lgl_analysis_app(doc):
     def set_seq_to_recolor(attr, old, new) -> None:
         lm.recolor_label = new
 
-    def select_points(
-        attr, old, new
-    ) -> None:  # outputs sequences of lasso selection to textbox
+    def select_points(attr, old, new)-> None:  # outputs sequences of lasso selection to textbox
         temp_df = lm.df
         temp_df = temp_df.reset_index(drop=True)
         temp_df = temp_df.loc[new]
@@ -607,6 +635,34 @@ def vae_lgl_analysis_app(doc):
                 for x in temp_df["Name"]
             ]
         )
+
+    def select_map_points(event): #selects sequences from hamiltonian map plot
+        geo = event.geometry
+        xx = geo['x']; yy = geo['y']
+        gridline_x = np.linspace(lm.grid_ranges[0],lm.grid_ranges[2],lm.pixels)
+        gridline_y = np.linspace(lm.grid_ranges[1],lm.grid_ranges[3],lm.pixels)
+        cl = np.arange(lm.pixels)
+        step_size_x = gridline_x[1] - gridline_y[0]
+        step_size_y = gridline_y[1] - gridline_y[0]
+        x_grid = [cl[np.isclose(xx[x],gridline_x,atol=step_size_x)][0] for x in range(len(xx))]
+        y_grid = [cl[np.isclose(yy[x],gridline_y,atol=step_size_y)][0] for x in range(len(yy))]
+        rr,cc = polygon(x_grid,y_grid,shape=(lm.pixels,lm.pixels))
+        selected_points = lm.index_grid[rr,cc].astype(np.int64)
+        lm.selected_positions = selected_points
+        fasta.text ='New sequences selected!'
+
+    def save_landscape_seqs(event):
+        print('saving landscape selection...')
+        count = 0
+        # progress.text = '\tz0  \t\t  z1\n'
+        grid_seq_parser = SeqIO.parse(lm.grid_seq_location,'fasta')
+        with open('landscape_selection.fasta','w') as fd:
+            for sequence in grid_seq_parser:
+                if count in lm.selected_positions:
+                    fd.writelines('>'+sequence.description+'\n'+sequence.seq+'\n')
+                    fasta.text = fasta.text + sequence.description + '\n'
+                count+=1
+        # progress.text = 'Done!\n'+progress.text
 
     def change_plot_type(
         event,
@@ -715,20 +771,24 @@ def vae_lgl_analysis_app(doc):
             if the_checkbox.labels[i] not in active_labels
         ]
         lm.change_plot_from_selection(labels_to_remove)
+    
+    def save_selected_fasta(event):
+        selected_df = lm.df.iloc[lm.base_cds.selected.indices]
+        with open('landscape_selection.fasta','w') as fd:
+            for row in range(0,selected_df.shape[0]):
+                fd.write(">"+selected_df.iloc[row]["Name"]+"\n"+selected_df.iloc[0]["Sequence"]+"\n")
+        return
 
     # Plotting Component
 
     title = Title()
     p = figure(
-        title=title, x_axis_label="z0", y_axis_label="z1", toolbar_location="below"
+        title=title, x_axis_label="z0", y_axis_label="z1", tools="pan,wheel_zoom,lasso_select,reset,save", toolbar_location="below", 
     )
-
-    # Lasso selection of points
-    select = LassoSelectTool(select_every_mousemove=False)
+    # p.on_event("selectiongeometry", select_map_points)
 
     # Hover information
     p.add_tools(HoverTool(tooltips=[("ID ", "@Name")]))
-    p.add_tools(select)
 
     # Define colorbar for landscape/plotting, hide initially
     color_mapper = LinearColorMapper(palette=Viridis256, low=0, high=1)
@@ -859,10 +919,8 @@ def vae_lgl_analysis_app(doc):
     leg.on_click(toggle_legend)
 
     # Selected Seqs
-    fasta = PreText(
-        text="""Displays fasta format from selection here""",
-        style={"overflow-y": "scroll", "height": "300px", "width": "600px"},
-    )
+    fasta = Button(label="Save selected sequences as fasta")
+    fasta.on_click(save_selected_fasta)
 
     # Collect into panel for tab
     panel_two_layout = column(
