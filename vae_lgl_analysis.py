@@ -776,7 +776,7 @@ def vae_lgl_analysis_app(doc):
         selected_df = lm.df.iloc[lm.base_cds.selected.indices]
         with open('landscape_selection.fasta','w') as fd:
             for row in range(0,selected_df.shape[0]):
-                fd.write(">"+selected_df.iloc[row]["Name"]+"\n"+selected_df.iloc[0]["Sequence"]+"\n")
+                fd.write(">"+selected_df.iloc[row]["Name"]+"\n"+selected_df.iloc[row]["Sequence"]+"\n")
         return
 
     # Plotting Component
