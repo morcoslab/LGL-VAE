@@ -67,3 +67,13 @@ def read_fasta_as_one_hot_encoded(file_path):
             seq_one_hot[seq_code[aa.upper()], idx2] = 1
 
         yield seq_one_hot.flatten()
+
+def get_key(val):
+    for key, value in seq_code.items():
+         if val == value:
+             return key
+
+
+def return_sequence(latent_output):
+    seq = ''.join(get_key(x) for x in np.argsort(latent_output, axis=0)[-1,:])
+    return seq

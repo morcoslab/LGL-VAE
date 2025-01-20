@@ -28,25 +28,18 @@ ds = tf.data.Dataset.from_generator(lambda: read_fasta_as_one_hot_encoded(sys.ar
 ds = ds.batch(1)
 mu1, _, _ = vae.encoder.predict(ds)
 
-ds = tf.data.Dataset.from_generator(lambda: read_fasta_as_one_hot_encoded(sys.argv[4]), tf.int8)
-ds = ds.batch(1)
-mu2, _, _ = vae.encoder.predict(ds)
-
-ds = tf.data.Dataset.from_generator(lambda: read_fasta_as_one_hot_encoded(sys.argv[5]), tf.int8)
-ds = ds.batch(1)
-mu3, _, _ = vae.encoder.predict(ds)
-
-ds = tf.data.Dataset.from_generator(lambda: read_fasta_as_one_hot_encoded(sys.argv[6]), tf.int8)
-ds = ds.batch(1)
-mu4, _, _ = vae.encoder.predict(ds)
-
-ds = tf.data.Dataset.from_generator(lambda: read_fasta_as_one_hot_encoded(sys.argv[7]), tf.int8)
-ds = ds.batch(1)
-mu5, _, _ = vae.encoder.predict(ds)
-
-# ds = tf.data.Dataset.from_generator(lambda: read_fasta_as_one_hot_encoded(sys.argv[8]), tf.int8)
+# ds = tf.data.Dataset.from_generator(lambda: read_fasta_as_one_hot_encoded(sys.argv[4]), tf.int8)
 # ds = ds.batch(1)
-# mu6, _, _ = vae.encoder.predict(ds)
+# mu2, _, _ = vae.encoder.predict(ds)
+
+# ds = tf.data.Dataset.from_generator(lambda: read_fasta_as_one_hot_encoded(sys.argv[5]), tf.int8)
+# ds = ds.batch(1)
+# mu3, _, _ = vae.encoder.predict(ds)
+
+# ds = tf.data.Dataset.from_generator(lambda: read_fasta_as_one_hot_encoded(sys.argv[6]), tf.int8)
+# ds = ds.batch(1)
+# mu4, _, _ = vae.encoder.predict(ds)
+
 
 # get ham values for points
 def get_zs(mu, grid_dataset):
@@ -56,7 +49,7 @@ def get_zs(mu, grid_dataset):
         dist = np.zeros(len(grid_dataset))
         for i in range(0, len(grid_dataset)):
             dist[i] = np.linalg.norm(mu[row_idx, :] - grid_dataset[i, 0:2])
-        ham_z[row_idx] = grid_dataset[np.where(dist == np.min(dist))[0][0],2]+10
+        ham_z[row_idx] = grid_dataset[np.where(dist == np.min(dist))[0][0],2]+0.4
     return ham_z
 
 
@@ -72,26 +65,27 @@ camera = dict(
 fig = go.Figure(data=[go.Surface(z=z, x=x, y=y,colorbar=dict(title=u'Δ Hamiltonian'))]) # frames=frames
 
 # wt BenM
-fig.add_scatter3d(x=mu1[:,0], y=mu1[:,1],z =get_zs(mu1, grid_dataset), mode='markers',marker=dict(
-            color='yellow',size=10), name="Squirrel WT")
+fig.add_scatter3d(x=[mu1[0,0]], y=[mu1[0,1]],z =[get_zs(mu1, grid_dataset)[0]], mode='markers',marker=dict(
+            color='yellow',size=5), name="RPA WT")
 # specific
-fig.add_scatter3d(x=mu2[:,0], y=mu2[:,1],z =get_zs(mu2, grid_dataset), mode='markers',marker=dict(
-            color='black',size=10), name="Rat WT")
+fig.add_scatter3d(x=[mu1[1,0]], y=[mu1[1,1]],z =[get_zs(mu1, grid_dataset)[1]], mode='markers',marker=dict(
+            color='black',size=5), name="RPA_F40A")
 # operational
-fig.add_scatter3d(x=mu3[:,0], y=mu3[:,1],z =get_zs(mu3, grid_dataset), mode='markers',marker=dict(
-            color='blue',size=10), name="Squirrel 5mut")
+fig.add_scatter3d(x=[mu1[2,0]], y=[mu1[2,1]],z =[get_zs(mu1, grid_dataset)[2]], mode='markers',marker=dict(
+            color='blue',size=5), name="RPA_H155N")
 # # inversion
-fig.add_scatter3d(x=mu4[:,0], y=mu4[:,1],z =get_zs(mu4, grid_dataset), mode='markers',marker=dict(
-            color='green',size=10), name="Squirrel 6mut")
+fig.add_scatter3d(x=[mu1[3,0]], y=[mu1[3,1]],z =[get_zs(mu1, grid_dataset)[3]], mode='markers',marker=dict(
+            color='green',size=5), name="RPA_W156H")
 # dynamic
-fig.add_scatter3d(x=mu5[:,0], y=mu5[:,1],z =get_zs(mu5, grid_dataset), mode='markers',marker=dict(
-            color='red',size=10), name="Rat 6mut")
-
+fig.add_scatter3d(x=[mu1[4,0]], y=[mu1[4,1]],z =[get_zs(mu1, grid_dataset)[4]], mode='markers',marker=dict(
+            color='red',size=5), name="RPA_W185F")
+fig.add_scatter3d(x=[mu1[5,0]], y=[mu1[5,1]],z =[get_zs(mu1, grid_dataset)[5]], mode='markers',marker=dict(
+            color='purple',size=5), name="RPA_Y219F")
 
 fig.update_scenes(xaxis_title_text='z0',
                   yaxis_title_text='z1',
                   zaxis_title_text=u'Δ Hamiltonian')
-fig.update_layout(title='TRMP8 Local Landscape', autosize=True,
+fig.update_layout(title='Local Landscape', autosize=True,
                   width=800, height=800,
                   margin=dict(l=65, r=50, b=65, t=90),
                   legend=dict(
@@ -103,5 +97,5 @@ fig.update_layout(title='TRMP8 Local Landscape', autosize=True,
                   scene_camera=camera
                   )
 
-fig.write_image("output path")
-# fig.show()
+fig.write_image("/home/ceziegler/Documents/Hydrolases/GO_0016824_lgl/RPA_plot.svg")
+fig.show()

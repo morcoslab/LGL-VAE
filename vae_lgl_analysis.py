@@ -30,6 +30,7 @@ from bokeh.models import (
     PreText,
     TextInput,
     Title,
+    PointDrawTool
 )
 from bokeh.events import SelectionGeometry
 from bokeh.models.callbacks import CustomJS
@@ -44,6 +45,7 @@ from model.generator import (
     get_fasta_file_dimensions,
     read_fasta_as_one_hot_encoded,
     seq_code,
+    return_sequence
 )
 from model.model import VAE
 
@@ -188,7 +190,6 @@ def vae_lgl_analysis_app(doc):
             self.plotting_df = newdf
             newsrc = ColumnDataSource(data=lm.plotting_df)
             lm.init_basecds(newsrc)
-            p.renderers = [p.renderers[0]]
             p.legend.items = []
             p.scatter(
                 "z0",
@@ -199,6 +200,7 @@ def vae_lgl_analysis_app(doc):
                 legend_field="Labels",
                 muted_alpha=0,
                 size=lm.bp_color_size[1],
+                level="glyph"
             )
 
         def update_grid_ranges(self, extent_array):
@@ -556,6 +558,7 @@ def vae_lgl_analysis_app(doc):
             legend_field="Labels",
             source=lm.base_cds,
             muted_alpha=0.2,
+            level="glyph"
         )
         lm.update_base(base)
         lm.base_plot.data_source.selected.on_change("indices", select_points)
@@ -607,7 +610,6 @@ def vae_lgl_analysis_app(doc):
         lm.update_df(pd.DataFrame(data=new_data_dictionary))
         newsrc = ColumnDataSource(data=lm.df)
         lm.init_basecds(newsrc)
-        p.renderers = [p.renderers[0]]
         p.legend.items = []
         p.scatter(
             "z0",
@@ -618,6 +620,7 @@ def vae_lgl_analysis_app(doc):
             legend_field="Labels",
             muted_alpha=0,
             size=lm.bp_color_size[1],
+            level="glyph"
         )
         select_seqs_to_relabel.options = lm.legend_labels
         update_checkbox()
@@ -729,7 +732,6 @@ def vae_lgl_analysis_app(doc):
             lm.update_cds_column(event.item, colored_values)
             # replot
             newsrc = ColumnDataSource(data=lm.df)
-            p.renderers = [p.renderers[0]]
             p.legend.items = []
             p.scatter(
                 "z0",
@@ -740,6 +742,7 @@ def vae_lgl_analysis_app(doc):
                 legend_field="Labels",
                 muted_alpha=0,
                 size=lm.bp_color_size[1],
+                level="glyph"
             )
             lm.base_plot.glyph.fill_color = "colors"
             lm.update_labels(list(set(lm.label_df[event.item])))
@@ -779,16 +782,34 @@ def vae_lgl_analysis_app(doc):
                 fd.write(">"+selected_df.iloc[row]["Name"]+"\n"+selected_df.iloc[row]["Sequence"]+"\n")
         return
 
+    def generate_drawn_points(event):
+        points = [[gen_source.data['x'][idx], gen_source.data['y'][idx]] for idx in range(len(gen_source.data['x']))]
+        seq_mats = lm.the_model.decoder.predict(points)
+        sequences = [return_sequence(seq) for seq in seq_mats]
+        with open('generated_sequences.fasta','w') as fd:
+            for idx in range(len(sequences)):
+                fd.write(">"+points[idx]+"\n"+sequences[idx]+"\n")
+        return
+
     # Plotting Component
 
     title = Title()
     p = figure(
         title=title, x_axis_label="z0", y_axis_label="z1", tools="pan,wheel_zoom,lasso_select,reset,save", toolbar_location="below", 
     )
-    # p.on_event("selectiongeometry", select_map_points)
 
+    
+    # p.on_event("selectiongeometry", select_map_points)
+    
     # Hover information
     p.add_tools(HoverTool(tooltips=[("ID ", "@Name")]))
+
+    # Add point generation
+    gen_source = ColumnDataSource(data=dict(x=[], y=[]))
+    gen_render = p.circle('x', 'y', source=gen_source, size=8, line_color="black", level="overlay")
+    point_draw_tool = PointDrawTool(renderers=[gen_render])
+    p.add_tools(point_draw_tool)
+
 
     # Define colorbar for landscape/plotting, hide initially
     color_mapper = LinearColorMapper(palette=Viridis256, low=0, high=1)
@@ -922,6 +943,10 @@ def vae_lgl_analysis_app(doc):
     fasta = Button(label="Save selected sequences as fasta")
     fasta.on_click(save_selected_fasta)
 
+    # Generate Seqs
+    gen_button = Button(label="Generate sequences from points drawn")
+    gen_button.on_click(generate_drawn_points)
+
     # Collect into panel for tab
     panel_two_layout = column(
         instruct_text,
@@ -935,6 +960,7 @@ def vae_lgl_analysis_app(doc):
         column_select,
         leg,
         fasta,
+        gen_button
     )
     panel_two = Panel(child=panel_two_layout, title="Plotting Tools")
 
