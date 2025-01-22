@@ -788,7 +788,7 @@ def vae_lgl_analysis_app(doc):
         sequences = [return_sequence(seq) for seq in seq_mats]
         with open('generated_sequences.fasta','w') as fd:
             for idx in range(len(sequences)):
-                fd.write(">"+points[idx]+"\n"+sequences[idx]+"\n")
+                fd.write(">"+str(points[idx])+"\n"+sequences[idx]+"\n")
         return
 
     # Plotting Component
