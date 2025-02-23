@@ -32,7 +32,9 @@ from bokeh.models import (
     Title,
     PointDrawTool,
     Legend,
-    LegendItem
+    LegendItem,
+    CDSView,
+    GroupFilter
 )
 from bokeh.events import SelectionGeometry
 from bokeh.models.callbacks import CustomJS
@@ -540,10 +542,12 @@ def vae_lgl_analysis_app(doc):
         new_data_dictionary["Labels"] = [
             "Training Data" for _ in range(newlatent.shape[0])
         ]
-        lm.update_df(pd.DataFrame(data=new_data_dictionary))
-        src = ColumnDataSource(lm.df)
-        lm.init_basecds(src)
-        # plot glyph
+        
+        # Initialize the main DataFrame and ColumnDataSource
+        lm.df = pd.DataFrame(data=new_data_dictionary)
+        lm.base_cds = ColumnDataSource(lm.df)
+        
+        # plot glyph using view to filter for training data
         base = p.scatter(
             "z0",
             "z1",
@@ -553,12 +557,13 @@ def vae_lgl_analysis_app(doc):
             legend_label="Training Data",
             source=lm.base_cds,
             muted_alpha=0.2,
-            level="glyph"
+            level="glyph",
+            view=CDSView(source=lm.base_cds, filters=[GroupFilter(column_name='Labels', group='Training Data')])
         )
         lm.update_base(base)
         lm.glyphs.append(base)
         lm.update_legend_labels('Training Data')
-        lm.base_plot.data_source.selected.on_change("indices", select_points)
+        lm.base_cds.selected.on_change("indices", select_points)
         p.legend.click_policy = "mute"
         if lm.bp_color_size[0] == "steelblue":
             p.x_range.range_padding = p.y_range.range_padding = 0.75
@@ -566,17 +571,11 @@ def vae_lgl_analysis_app(doc):
         lm.recolor_label = "Training Data"
         update_checkbox()
 
-    def plot_data(
-        attr, old, new
-    ) -> None:  # plots any additional datapoints, unselectable by lasso
-        decoded = base64.b64decode(
-            new
-        )  # bokeh reads inputs in base64 so we need to decode
-        bytes_decoded = io.BytesIO(decoded).read()  # this line decodes into bytes
-        text_obj = bytes_decoded.decode("UTF-8")  # now we convert into an text_obj
-        fasta_in = io.StringIO(
-            text_obj
-        )  # we convert text into StringIO and then read as str
+    def plot_data(attr, old, new) -> None:  # plots any additional datapoints
+        decoded = base64.b64decode(new)  
+        bytes_decoded = io.BytesIO(decoded).read()  
+        text_obj = bytes_decoded.decode("UTF-8")  
+        fasta_in = io.StringIO(text_obj)  
         newds = tf.data.Dataset.from_generator(
             lambda: read_fasta_as_one_hot_encoded(fasta_in), tf.int8
         )
@@ -602,21 +601,26 @@ def vae_lgl_analysis_app(doc):
             new_data_dictionary["colors"] = [
                 chosen_color for _ in range(newlatent.shape[0])
             ]
+        
+        # Add new data to existing DataFrame
         new_df = pd.DataFrame(data=new_data_dictionary)
-        lm.update_df(new_df)
-        newsrc = ColumnDataSource(data=new_df)
-        lm.init_basecds(newsrc)
-        # p.legend.items = []
+        lm.df = pd.concat([lm.df, new_df], ignore_index=True)
+        
+        # Update the CDS with complete DataFrame
+        lm.base_cds.data = ColumnDataSource.from_df(lm.df)
+        
+        # Add new glyph using same CDS but with view filter
         base = p.scatter(
             "z0",
             "z1",
-            source=newsrc,
+            source=lm.base_cds,
             fill_color="colors",
             line_color=None,
             legend_label=add_file_name,
             muted_alpha=0,
             size=lm.bp_color_size[1],
-            level="glyph"
+            level="glyph",
+            view=CDSView(source=lm.base_cds, filters=[GroupFilter(column_name='Labels', group=add_file_name)])
         )
         lm.glyphs.append(base)
         lm.update_legend_labels(add_file_name)
@@ -779,12 +783,18 @@ def vae_lgl_analysis_app(doc):
     
     def save_selected_fasta(event):
         print("Saving selected sequences..")
-        selected_df = lm.df.iloc[lm.base_cds.selected.indices]
+        if len(lm.base_cds.selected.indices) > 0:
+            selected_df = lm.df.iloc[lm.base_cds.selected.indices]
+            print(f"Saving {len(selected_df)} selected sequences...")
+        else:
+            selected_df = lm.df
+            print(f"No selection - saving all {len(selected_df)} sequences...")
+        
         with open('landscape_selection.fasta','w') as fd:
             for row in range(0,selected_df.shape[0]):
                 fd.write(">"+selected_df.iloc[row]["Name"]+"\n"+selected_df.iloc[row]["Sequence"]+"\n")
         print("DONE")
-        return
+        fasta.text = f"Saved {len(selected_df)} sequences to landscape_selection.fasta"
 
     def generate_drawn_points(event):
         points = [[gen_source.data['x'][idx], gen_source.data['y'][idx]] for idx in range(len(gen_source.data['x']))]
@@ -889,7 +899,7 @@ def vae_lgl_analysis_app(doc):
         -To relabel plotted sequences using a csv, select a group to relabel.
         Select "Load CSV" to load a CSV, where the first row is column labels,
         with rows corresponding to MSA sequences.
-        -Select "Choose CSV Column" to recolor data according to
+        -Select "Choose CSV column" to recolor data according to
         your class label.
         -Select "Toggle Legend" to turn off the legend.
         Next tab allows you to remove sequences with specific labels
