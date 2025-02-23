@@ -30,7 +30,9 @@ from bokeh.models import (
     PreText,
     TextInput,
     Title,
-    PointDrawTool
+    PointDrawTool,
+    Legend,
+    LegendItem
 )
 from bokeh.events import SelectionGeometry
 from bokeh.models.callbacks import CustomJS
@@ -91,6 +93,7 @@ def vae_lgl_analysis_app(doc):
             self.recolor_label = None
             self.csv_columns = []
             self.plotting_df = None
+            self.glyphs = []
 
         def update_model(self, model_name):
             decoded = base64.b64decode(
@@ -160,6 +163,11 @@ def vae_lgl_analysis_app(doc):
 
         def update_legend_labels(self, newlabel):
             self.legend_labels.append(str(newlabel))
+        
+        def set_legend(self):
+            legend_items = [LegendItem(label=self.legend_labels, renderers=self.glyphs)]
+            legend = Legend(items=legend_items)
+            return legend
 
         def update_ldf_labels(self, label_df):
             self.ldf_labels = list(label_df.columns)
@@ -181,27 +189,15 @@ def vae_lgl_analysis_app(doc):
             self.legend_labels.remove(self.recolor_label)
             self.legend_labels = self.legend_labels + labellist
 
-        def change_plot_from_selection(self, unselected_label_list):
-            newdf = (
-                self.df
-            )  # builds displayed selection from scratch, every time
-            for label in unselected_label_list:
-                newdf = newdf[newdf["Labels"] != label]
-            self.plotting_df = newdf
-            newsrc = ColumnDataSource(data=lm.plotting_df)
-            lm.init_basecds(newsrc)
-            p.legend.items = []
-            p.scatter(
-                "z0",
-                "z1",
-                source=newsrc,
-                fill_color="colors",
-                line_color=None,
-                legend_field="Labels",
-                muted_alpha=0,
-                size=lm.bp_color_size[1],
-                level="glyph"
-            )
+        def remove_from_selection(self, unselected_label_list):
+            for item in unselected_label_list:
+                glyph = lm.glyphs[lm.legend_labels.index(item)]
+                glyph.visible = False
+
+        def add_from_selection(self, selected_label_list):
+            for item in selected_label_list:
+                glyph = lm.glyphs[lm.legend_labels.index(item)]
+                glyph.visible = True
 
         def update_grid_ranges(self, extent_array):
             self.grid_ranges = extent_array
@@ -547,7 +543,6 @@ def vae_lgl_analysis_app(doc):
         lm.update_df(pd.DataFrame(data=new_data_dictionary))
         src = ColumnDataSource(lm.df)
         lm.init_basecds(src)
-        lm.update_legend_labels('Training Data')
         # plot glyph
         base = p.scatter(
             "z0",
@@ -555,14 +550,15 @@ def vae_lgl_analysis_app(doc):
             fill_color="colors",
             line_color=None,
             size=lm.bp_color_size[1],
-            legend_field="Labels",
+            legend_label="Training Data",
             source=lm.base_cds,
             muted_alpha=0.2,
             level="glyph"
         )
         lm.update_base(base)
+        lm.glyphs.append(base)
+        lm.update_legend_labels('Training Data')
         lm.base_plot.data_source.selected.on_change("indices", select_points)
-        p.legend.location = "top_left"
         p.legend.click_policy = "mute"
         if lm.bp_color_size[0] == "steelblue":
             p.x_range.range_padding = p.y_range.range_padding = 0.75
@@ -606,23 +602,27 @@ def vae_lgl_analysis_app(doc):
             new_data_dictionary["colors"] = [
                 chosen_color for _ in range(newlatent.shape[0])
             ]
-        lm.update_legend_labels(add_file_name)
-        lm.update_df(pd.DataFrame(data=new_data_dictionary))
-        newsrc = ColumnDataSource(data=lm.df)
+        new_df = pd.DataFrame(data=new_data_dictionary)
+        lm.update_df(new_df)
+        newsrc = ColumnDataSource(data=new_df)
         lm.init_basecds(newsrc)
-        p.legend.items = []
-        p.scatter(
+        # p.legend.items = []
+        base = p.scatter(
             "z0",
             "z1",
             source=newsrc,
             fill_color="colors",
             line_color=None,
-            legend_field="Labels",
+            legend_label=add_file_name,
             muted_alpha=0,
             size=lm.bp_color_size[1],
             level="glyph"
         )
+        lm.glyphs.append(base)
+        lm.update_legend_labels(add_file_name)
         select_seqs_to_relabel.options = lm.legend_labels
+        p.legend.location = "top_left"
+        p.legend.click_policy = "mute"
         update_checkbox()
 
     def set_seq_to_recolor(attr, old, new) -> None:
@@ -732,8 +732,7 @@ def vae_lgl_analysis_app(doc):
             lm.update_cds_column(event.item, colored_values)
             # replot
             newsrc = ColumnDataSource(data=lm.df)
-            p.legend.items = []
-            p.scatter(
+            base=p.scatter(
                 "z0",
                 "z1",
                 source=newsrc,
@@ -744,6 +743,7 @@ def vae_lgl_analysis_app(doc):
                 size=lm.bp_color_size[1],
                 level="glyph"
             )
+            lm.glyphs.append(base)
             lm.base_plot.glyph.fill_color = "colors"
             lm.update_labels(list(set(lm.label_df[event.item])))
             update_checkbox()
@@ -771,15 +771,19 @@ def vae_lgl_analysis_app(doc):
         labels_to_remove = [
             the_checkbox.labels[i]
             for i in range(len(the_checkbox.labels))
-            if the_checkbox.labels[i] not in active_labels
+            if i not in the_checkbox.active
         ]
-        lm.change_plot_from_selection(labels_to_remove)
+        lm.add_from_selection(active_labels)
+        if labels_to_remove:
+            lm.remove_from_selection(labels_to_remove)
     
     def save_selected_fasta(event):
+        print("Saving selected sequences..")
         selected_df = lm.df.iloc[lm.base_cds.selected.indices]
         with open('landscape_selection.fasta','w') as fd:
             for row in range(0,selected_df.shape[0]):
                 fd.write(">"+selected_df.iloc[row]["Name"]+"\n"+selected_df.iloc[row]["Sequence"]+"\n")
+        print("DONE")
         return
 
     def generate_drawn_points(event):
