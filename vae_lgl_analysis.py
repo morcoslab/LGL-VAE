@@ -542,9 +542,10 @@ def vae_lgl_analysis_app(doc):
         new_data_dictionary["Labels"] = [
             "Training Data" for _ in range(newlatent.shape[0])
         ]
-        
+
+        new_df = pd.DataFrame(data=new_data_dictionary)
+        lm.df = pd.concat([lm.df, new_df], ignore_index=True)
         # Initialize the main DataFrame and ColumnDataSource
-        lm.df = pd.DataFrame(data=new_data_dictionary)
         lm.base_cds = ColumnDataSource(lm.df)
         
         # plot glyph using view to filter for training data
@@ -607,7 +608,7 @@ def vae_lgl_analysis_app(doc):
         lm.df = pd.concat([lm.df, new_df], ignore_index=True)
         
         # Update the CDS with complete DataFrame
-        lm.base_cds.data = ColumnDataSource.from_df(lm.df)
+        lm.base_cds= ColumnDataSource(lm.df)
         
         # Add new glyph using same CDS but with view filter
         base = p.scatter(
