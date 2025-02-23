@@ -77,7 +77,7 @@ def vae_lgl_analysis_app(doc):
             self.the_model_name = ""
             self.the_model = None
             self.df = None
-            self.base_cds = None
+            self.base_cds = ColumnDataSource()
             self.grid_hamiltonian_plot = ""
             self.grid_hamiltonian_df = ""
             self.base_plot = ""
@@ -181,7 +181,7 @@ def vae_lgl_analysis_app(doc):
             refactor = np.array(self.df)
             idxs = np.where(refactor == lm.recolor_label)
             refactor[idxs] = lm.label_df[labeldf_column]
-            refactor[idxs[0], 3] = new_colors
+            refactor[idxs[0], 5] = new_colors
             lm.df = pd.DataFrame(data=refactor, columns=lm.df.columns).astype('string')
 
         def update_colors(self, colorlist):
@@ -546,7 +546,7 @@ def vae_lgl_analysis_app(doc):
         new_df = pd.DataFrame(data=new_data_dictionary)
         lm.df = pd.concat([lm.df, new_df], ignore_index=True)
         # Initialize the main DataFrame and ColumnDataSource
-        lm.base_cds = ColumnDataSource(lm.df)
+        lm.base_cds.data.update(lm.df)
         
         # plot glyph using view to filter for training data
         base = p.scatter(
@@ -608,23 +608,26 @@ def vae_lgl_analysis_app(doc):
         lm.df = pd.concat([lm.df, new_df], ignore_index=True)
         
         # Update the CDS with complete DataFrame
-        lm.base_cds= ColumnDataSource(lm.df)
+        lm.base_cds.data.update(lm.df)
         
         # Add new glyph using same CDS but with view filter
         base = p.scatter(
-            "z0",
-            "z1",
-            source=lm.base_cds,
-            fill_color="colors",
-            line_color=None,
-            legend_label=add_file_name,
-            muted_alpha=0,
-            size=lm.bp_color_size[1],
-            level="glyph",
-            view=CDSView(source=lm.base_cds, filters=[GroupFilter(column_name='Labels', group=add_file_name)])
-        )
+                "z0",
+                "z1",
+                fill_color="colors",
+                line_color=None,
+                size=lm.bp_color_size[1],
+                legend_label=add_file_name,
+                source=lm.base_cds,
+                muted_alpha=0.2,
+                level="glyph",
+                view=CDSView(source=lm.base_cds, filters=[GroupFilter(column_name='Labels', group=add_file_name)])
+            )
+        lm.update_base(base)
         lm.glyphs.append(base)
-        lm.update_legend_labels(add_file_name)
+        lm.legend_labels.append(add_file_name)
+        
+        # Update legend and checkbox
         select_seqs_to_relabel.options = lm.legend_labels
         p.legend.location = "top_left"
         p.legend.click_policy = "mute"
@@ -735,22 +738,32 @@ def vae_lgl_analysis_app(doc):
             colored_values = [newcolors[x] for x in lm.label_df[event.item]]
             # update data
             lm.update_cds_column(event.item, colored_values)
-            # replot
-            newsrc = ColumnDataSource(data=lm.df)
-            base=p.scatter(
-                "z0",
-                "z1",
-                source=newsrc,
-                fill_color="colors",
-                line_color=None,
-                legend_field="Labels",
-                muted_alpha=0,
-                size=lm.bp_color_size[1],
-                level="glyph"
-            )
-            lm.glyphs.append(base)
-            lm.base_plot.glyph.fill_color = "colors"
-            lm.update_labels(list(set(lm.label_df[event.item])))
+
+            lm.base_cds.data.update(lm.df)
+            # Reset glyphs
+            for glyph in lm.glyphs:
+                if glyph in p.renderers:
+                    p.renderers.remove(glyph)
+            lm.glyphs = []
+    
+            # Create new glyph for each unique label using filtered views
+            lm.legend_labels = list(set(lm.df['Labels']))
+            for label in lm.legend_labels:
+                view = CDSView(source=lm.base_cds, filters=[GroupFilter(column_name='Labels', group=label)])
+                glyph = p.scatter(
+                        "z0",
+                        "z1",
+                        source=lm.base_cds,
+                        view=view,
+                        fill_color="colors",
+                        line_color=None,
+                        legend_label=label,
+                        muted_alpha=0.2,
+                        size=lm.bp_color_size[1],
+                        level="glyph"
+                )
+                lm.glyphs.append(glyph) # add glyph to list
+            # lm.update_labels(list(set(lm.label_df[event.item])))
             update_checkbox()
 
     def toggle_legend(event) -> None:  # turn off/on legend
