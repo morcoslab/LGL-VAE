@@ -180,8 +180,8 @@ def vae_lgl_analysis_app(doc):
         def update_cds_column(self, labeldf_column, new_colors):
             refactor = np.array(self.df)
             idxs = np.where(refactor == lm.recolor_label)
-            refactor[idxs] = lm.label_df[labeldf_column]
-            refactor[idxs[0], 5] = new_colors
+            refactor[idxs[0],5] = lm.label_df[labeldf_column]
+            refactor[idxs[0], 4] = new_colors
             lm.df = pd.DataFrame(data=refactor, columns=lm.df.columns).astype('string')
 
         def update_colors(self, colorlist):
@@ -740,11 +740,13 @@ def vae_lgl_analysis_app(doc):
             lm.update_cds_column(event.item, colored_values)
 
             lm.base_cds.data.update(lm.df)
-            # Reset glyphs
+
+            # Reset glyphs and legend
             for glyph in lm.glyphs:
                 if glyph in p.renderers:
                     p.renderers.remove(glyph)
             lm.glyphs = []
+            p.legend.items =[]
     
             # Create new glyph for each unique label using filtered views
             lm.legend_labels = list(set(lm.df['Labels']))
@@ -762,6 +764,7 @@ def vae_lgl_analysis_app(doc):
                         size=lm.bp_color_size[1],
                         level="glyph"
                 )
+                p.renderers.append(glyph)
                 lm.glyphs.append(glyph) # add glyph to list
             # lm.update_labels(list(set(lm.label_df[event.item])))
             update_checkbox()
