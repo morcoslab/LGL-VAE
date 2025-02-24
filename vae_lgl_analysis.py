@@ -196,10 +196,17 @@ def vae_lgl_analysis_app(doc):
                 glyph = lm.glyphs[lm.legend_labels.index(item)]
                 glyph.visible = False
 
+                for legend_item in p.legend.items:
+                    if legend_item.label['value'] == item:
+                        p.legend.items.remove(legend_item)
+
         def add_from_selection(self, selected_label_list):
             for item in selected_label_list:
                 glyph = lm.glyphs[lm.legend_labels.index(item)]
                 glyph.visible = True
+                
+                p.legend.items = [LegendItem(label=legend_item, renderers=[lm.glyphs[lm.legend_labels.index(legend_item)]]) for idx, legend_item in enumerate(selected_label_list)]
+                
 
         def update_grid_ranges(self, extent_array):
             self.grid_ranges = extent_array
