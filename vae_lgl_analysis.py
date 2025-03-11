@@ -34,7 +34,8 @@ from bokeh.models import (
     Legend,
     LegendItem,
     CDSView,
-    GroupFilter
+    GroupFilter,
+    Div
 )
 from bokeh.events import SelectionGeometry
 from bokeh.models.callbacks import CustomJS
@@ -44,6 +45,8 @@ from bokeh.plotting import figure
 from bokeh.server.server import Server
 from dca.dca_class import dca
 from keras.models import load_model
+import plotly.graph_objects as go
+import plotly.io as pio
 
 from model.generator import (
     get_fasta_file_dimensions,
@@ -1015,8 +1018,120 @@ def vae_lgl_analysis_app(doc):
     panel_three_layout = column(checkbox_toggle, the_checkbox)
     panel_three = Panel(child=panel_three_layout, title="Legend Editing")
 
+    ## Tab Four Components - 3D Landscape
+    def create_3d_plot():
+        if lm.landscape_grid is not None:
+            try:
+                grid_dataset = lm.landscape_grid
+                
+                # Extract x, y, z values
+                x = grid_dataset[:, 0]
+                y = grid_dataset[:, 1]
+                z = grid_dataset[:, 2]
+                
+                # Determine grid dimensions
+                x_unique = np.unique(x)
+                y_unique = np.unique(y)
+                nx = len(x_unique)
+                ny = len(y_unique)
+                
+                # Reshape z into a grid
+                Z = np.zeros((ny, nx))
+                for i, xi in enumerate(x_unique):
+                    for j, yi in enumerate(y_unique):
+                        idx = np.where((x == xi) & (y == yi))[0]
+                        if len(idx) > 0:
+                            Z[j, i] = z[idx[0]]
+                
+                # Create the figure
+                fig = go.Figure(data=[go.Surface(z=Z, x=x_unique, y=y_unique)])
+                fig.update_layout(
+                    title='3D Latent Generative Landscape',
+                    scene=dict(
+                        xaxis_title='z0',
+                        yaxis_title='z1',
+                        zaxis_title='Energy'
+                    ),
+                    width=800,
+                    height=600,
+                    margin=dict(l=0, r=0, b=0, t=30)
+                )
+                
+                # Save to a temporary HTML file
+                import tempfile
+                import os
+                import threading
+                import http.server
+                import socketserver
+                
+                # Create a temporary file with a predictable name
+                temp_dir = tempfile.gettempdir()
+                temp_file = os.path.join(temp_dir, "vae_3d_plot.html")
+                
+                # Write the plot to the file
+                import plotly.io as pio
+                with open(temp_file, 'w') as f:
+                    f.write(pio.to_html(fig, full_html=True, include_plotlyjs='cdn'))
+                
+                print(f"Saved 3D plot to: {temp_file}")
+                
+                # Set up a simple HTTP server in a separate thread
+                PORT = 8000
+                DIRECTORY = temp_dir
+                
+                class Handler(http.server.SimpleHTTPRequestHandler):
+                    def __init__(self, *args, **kwargs):
+                        super().__init__(*args, directory=DIRECTORY, **kwargs)
+                
+                def start_server():
+                    with socketserver.TCPServer(("", PORT), Handler) as httpd:
+                        print(f"Serving at port {PORT}")
+                        httpd.serve_forever()
+                
+                # Start the server in a separate thread if it's not already running
+                try:
+                    import socket
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.connect(("localhost", PORT))
+                    s.close()
+                    print("Server already running")
+                except:
+                    print("Starting server")
+                    server_thread = threading.Thread(target=start_server, daemon=True)
+                    server_thread.start()
+                
+                # Create an iframe that points to the local server
+                plot_filename = os.path.basename(temp_file)
+                iframe_html = f"""
+                <iframe src="http://localhost:{PORT}/{plot_filename}" width="800" height="600" frameborder="0"></iframe>
+                <p>If the plot is not visible, you can open it directly at: 
+                <a href="http://localhost:{PORT}/{plot_filename}" target="_blank">http://localhost:{PORT}/{plot_filename}</a></p>
+                """
+                
+                return iframe_html
+                
+            except Exception as e:
+                print(f"Error creating 3D plot: {e}")
+                import traceback
+                traceback.print_exc()
+                return f"<p>Error creating 3D plot: {str(e)}</p>"
+        return "<p>Please load a model first</p>"
+
+    # Create HTML component for 3D plot
+    plot_3d = Div(text="<p>Click 'Update 3D Plot' to generate the visualization</p>", width=800, height=600)
+    
+    # Button to update 3D plot
+    update_3d = Button(label="Update 3D Plot", button_type="success")
+    def update_3d_plot(event):
+        plot_3d.text = create_3d_plot()
+    update_3d.on_click(update_3d_plot)
+
+    # Collect into panel for tab
+    panel_four_layout = column(update_3d, plot_3d)
+    panel_four = Panel(child=panel_four_layout, title="3D Landscape")
+
     # Build and run
-    doc.add_root(row(p, Tabs(tabs=[panel_one, panel_two, panel_three])))
+    doc.add_root(row(p, Tabs(tabs=[panel_one, panel_two, panel_three, panel_four])))
 
 
 server = Server(
