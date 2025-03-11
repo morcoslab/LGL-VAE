@@ -1024,7 +1024,7 @@ def vae_lgl_analysis_app(doc):
             try:
                 grid_dataset = lm.landscape_grid
                 
-                # Extract x, y, z values
+                # Extract x, y, z values for the surface
                 x = grid_dataset[:, 0]
                 y = grid_dataset[:, 1]
                 z = grid_dataset[:, 2]
@@ -1043,21 +1043,63 @@ def vae_lgl_analysis_app(doc):
                         if len(idx) > 0:
                             Z[j, i] = z[idx[0]]
                 
-                # Create the figure
-                fig = go.Figure(data=[go.Surface(z=Z, x=x_unique, y=y_unique)])
+                # Create the figure with the surface
+                fig = go.Figure(data=[go.Surface(z=Z, x=x_unique, y=y_unique, opacity=0.8)])
+                
+                # Add scatter points if we have data in the DataFrame
+                if not lm.df.empty and 'z0' in lm.df.columns and 'z1' in lm.df.columns:
+                    # Get unique labels for coloring
+                    unique_labels = lm.df['Labels'].unique()
+                    
+                    # For each label group, add a scatter3d trace
+                    for label in unique_labels:
+                        df_subset = lm.df[lm.df['Labels'] == label]
+                        
+                        # Get z values for these points by interpolating from the surface
+                        scatter_z = []
+                        for idx, row in df_subset.iterrows():
+                            # Find closest grid point
+                            x_idx = np.abs(x_unique - row['z0']).argmin()
+                            y_idx = np.abs(y_unique - row['z1']).argmin()
+                            # Get z value from grid
+                            scatter_z.append(Z[y_idx, x_idx])
+                        
+                        # Add scatter points for this label group
+                        fig.add_trace(go.Scatter3d(
+                            x=df_subset['z0'],
+                            y=df_subset['z1'],
+                            z=scatter_z,
+                            mode='markers',
+                            marker=dict(
+                                size=5,
+                                color=df_subset['colors'].iloc[0] if len(set(df_subset['colors'])) == 1 else df_subset['colors'],
+                                opacity=0.8
+                            ),
+                            name=label,
+                            text=[f"ID: {name}<br>Sequence: {seq[:20]}..." for name, seq in zip(df_subset['Name'], df_subset['Sequence'])],
+                            hoverinfo='text',
+                            hovertemplate='%{text}<br>z0: %{x:.4f}<br>z1: %{y:.4f}<br>Energy: %{z:.4f}<extra></extra>'
+                        ))
+                
+                # Update layout
                 fig.update_layout(
-                    title='3D Latent Generative Landscape',
+                    title='3D Latent Generative Landscape with Data Points',
                     scene=dict(
                         xaxis_title='z0',
                         yaxis_title='z1',
-                        zaxis_title='Energy'
+                        zaxis_title='Energy',
+                        camera=dict(
+                            up=dict(x=0, y=0, z=1),
+                            center=dict(x=0, y=0, z=0),
+                            eye=dict(x=1.5, y=1.5, z=1.5)
+                        )
                     ),
                     width=800,
                     height=600,
                     margin=dict(l=0, r=0, b=0, t=30)
                 )
                 
-                # Save to a temporary HTML file
+                # Save to a temporary HTML file and set up server as before
                 import tempfile
                 import os
                 import threading
@@ -1130,8 +1172,25 @@ def vae_lgl_analysis_app(doc):
     panel_four_layout = column(update_3d, plot_3d)
     panel_four = Panel(child=panel_four_layout, title="3D Landscape")
 
-    # Build and run
-    doc.add_root(row(p, Tabs(tabs=[panel_one, panel_two, panel_three, panel_four])))
+    # Build and run - modify this part to conditionally show plots
+    tabs = Tabs(tabs=[panel_one, panel_two, panel_three, panel_four])
+    
+    # Create a callback to hide/show the main plot based on active tab
+    def update_visibility(attr, old, new):
+        if new == 3:  # If 3D Landscape tab is selected (index 3)
+            p.visible = False  # Hide the main plot
+            plot_3d.width = 1600  # Make 3D plot wider to cover the space
+            plot_3d.height = 800  # Make 3D plot taller
+        else:
+            p.visible = True  # Show the main plot for other tabs
+            plot_3d.width = 800  # Reset 3D plot size
+            plot_3d.height = 600
+    
+    # Register the callback
+    tabs.on_change('active', update_visibility)
+    
+    # Add both to the document in a layout that allows conditional visibility
+    doc.add_root(column(row(p, tabs)))
 
 
 server = Server(
