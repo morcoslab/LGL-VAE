@@ -47,6 +47,8 @@ from dca.dca_class import dca
 from keras.models import load_model
 import plotly.graph_objects as go
 import plotly.io as pio
+import argparse
+
 
 from model.generator import (
     get_fasta_file_dimensions,
@@ -55,6 +57,13 @@ from model.generator import (
     return_sequence
 )
 from model.model import VAE
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='VAE LGL Analysis')
+    parser.add_argument('--save-as-svg', action='store_true', 
+                      help='Set output backend to SVG (default is PNG)')
+    return parser.parse_args()
 
 
 def vae_lgl_analysis_app(doc):
@@ -836,7 +845,7 @@ def vae_lgl_analysis_app(doc):
 
     title = Title()
     p = figure(
-        title=title, x_axis_label="z0", y_axis_label="z1", tools="pan,wheel_zoom,lasso_select,reset,save", toolbar_location="below", 
+        title=title, x_axis_label="z0", y_axis_label="z1", tools="pan,wheel_zoom,lasso_select,reset,save", toolbar_location="below", output_backend=OUTPUT_BACKEND
     )
 
     
@@ -987,6 +996,7 @@ def vae_lgl_analysis_app(doc):
     # Generate Seqs
     gen_button = Button(label="Generate sequences from points drawn")
     gen_button.on_click(generate_drawn_points)
+
 
     # Collect into panel for tab
     panel_two_layout = column(
@@ -1193,13 +1203,20 @@ def vae_lgl_analysis_app(doc):
     doc.add_root(column(row(p, tabs)))
 
 
-server = Server(
-    {"/": vae_lgl_analysis_app}, port=5006, websocket_max_message_size=1000000000000, allow_websocket_origin=["localhost:5006","5006"]
-)
-server.start()
-
 if __name__ == "__main__":
+    args = parse_args()
+    
+    # Create a global variable to store the output backend
+    global OUTPUT_BACKEND
+    OUTPUT_BACKEND = "svg" if args.save_as_svg else "canvas"
+    
     print("Opening Bokeh application on http://localhost:5006/")
-
+    server = Server(
+        {"/": vae_lgl_analysis_app}, 
+        port=5006, 
+        websocket_max_message_size=1000000000000, 
+        allow_websocket_origin=["localhost:5006","5006"]
+    )
+    server.start()
     server.io_loop.add_callback(server.show, "/")
     server.io_loop.start()
