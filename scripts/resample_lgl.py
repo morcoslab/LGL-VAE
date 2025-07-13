@@ -14,7 +14,7 @@ import os
 
 """
 Usage:
-    python script.py landscape.pkl [pixel_density=400] [x_min=-8] [x_max=8] [y_min=-8] [y_max=8]
+    python resample_lgl.py landscape.pkl [pixel_density=400] [x_min=-8] [x_max=8] [y_min=-8] [y_max=8]
 """
 
 def decode_landscape_pkl(pkl_path, model_params):
