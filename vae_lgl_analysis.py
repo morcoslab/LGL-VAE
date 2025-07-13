@@ -514,6 +514,10 @@ def vae_lgl_analysis_app(doc):
         p.x_range.range_padding = p.y_range.range_padding = 0
         p.grid.grid_line_width = 0.5
         grid_dataset = lm.landscape_grid
+
+        # ✅ Sort by x (primary), then y (secondary) to ensure consistent ordering
+        grid_dataset = grid_dataset[np.lexsort((grid_dataset[:,1], grid_dataset[:,0]))]
+
         pixels = grid_dataset[grid_dataset[:, 0] == grid_dataset[0, 0]].shape[0]
         lm.pixels = pixels
         image_grid = np.zeros((pixels, pixels))
@@ -528,7 +532,7 @@ def vae_lgl_analysis_app(doc):
         xmin, ymin = grid_dataset[0][0], grid_dataset[0][1]
         xmax, ymax = grid_dataset[-1][0], grid_dataset[-1][1]
         lm.update_grid_ranges([xmin, ymin, xmax, ymax])
-        xspan, yspan = grid_dataset[-1][0] - xmin, grid_dataset[-1][1] - ymin
+        xspan, yspan = xmax - xmin, ymax - ymin
         output_plot = p.image(
             image=[image_grid], x=xmin, y=ymin, dw=xspan, dh=yspan, level="image"
         )
@@ -536,6 +540,7 @@ def vae_lgl_analysis_app(doc):
         output_plot.glyph.color_mapper = color_mapper
         lm.update_grid_plot(output_plot)
         color_bar.visible = True
+
 
     def plot_base_data(event) -> None:  # plots primary dataset, selectable by lasso
         newds = tf.data.Dataset.from_generator(
